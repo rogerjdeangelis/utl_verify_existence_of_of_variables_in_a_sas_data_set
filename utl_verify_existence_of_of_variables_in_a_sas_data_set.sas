@@ -1,5 +1,10 @@
 Verify the Existence of Variables in a Table
 
+see at end of message
+
+One datastep and hash solution
+from Paul Dorfman
+
 see
 https://tinyurl.com/yb9euycm
 https://github.com/rogerjdeangelis/utl_verify_existence_of_of_variables_in_a_sas_data_set
@@ -205,4 +210,92 @@ proc sql;
 ;quit;
 run;quit;
 ');
+
+One datastep and hash solution
+from Paul Dorfman
+
+Paul Dorfman
+sashole@bellsouth.net
+
+
+data expected_vars;
+length name $32;
+   infile cards missover;
+      input name $ type;
+cards;
+agency 2
+dx 2
+name 2
+locdescr 2
+rem_currid 2
+rem_id3 2
+rem_recipno 2
+;
+run;
+
+data received ;
+  retain agency      "agency"
+         dx          "dx"
+         name        "name"
+         locdescr    "locdescr"
+     /* rem_currid  "rem_currid"  */
+         rem_id3     "rem_id3"
+         rem_recipno "rem_recipno"
+         more        "more"
+  ;
+
+run ;
+
+%let rn = _%sysfunc(md5(#),$hex30.) ;
+%put &=rn;
+
+data not_found (keep=&rn found rename=(&rn=name)) ;
+  set received ;
+  array cc _char_ ;
+  do until (z) ;
+    found = 0 ;
+    set expected_vars (rename=(name=&rn)) end = z ;
+    do over cc ;
+      if &rn = vname(cc) then found = 1 ;
+    end ;
+    if found then continue ;
+    output ;
+    fail = 1 ;
+  end ;
+  call symputx ("success", not fail) ;
+run ;
+
+%put &=success ;
+
+
+Thanks, Roger.
+
+Explanation of one step solution
+
+Need to ensure (sort of) that the ID var in Expected_Vars, Name, is
+not in Received. Using md5 (underscore + 31 random hex characters, md5
+argument doesn't matter) or just a string of 32 underscores is quick and
+dirty. Of course, we can look at what's in Received and rename Name on
+input to something else. But that wouldn't be one step ;).
+
+data _null_ ;
+  set received ;
+  array cc _char_ ;
+  dcl hash h(dataset:"expected_vars( rename=(name=&rn))") ;
+  h.definekey ("&rn") ;
+  h.definedone () ;
+  do over cc ;
+    _n_ + (h.check(key:vname(cc)) = 0) ;
+  end ;
+  call symputx ("success", _n_-1 = n) ;
+  set expected_vars(rename=(name=& rn)) nobs=n ;
+  stop ;
+run ;
+
+%put &=success ;
+
+
+
+
+
 
